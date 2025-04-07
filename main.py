@@ -5,6 +5,7 @@ import requests
 import os
 import logging
 import sys
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -59,7 +60,7 @@ async def root():
 # Langflow query route
 @app.post("/query")
 async def query_agent(request: QueryRequest):
-    logger.info("Query endpoint called")
+    logger.info(f"Query endpoint called with message: {request.message}")
     
     # Dynamically load the token
     application_token = os.getenv("APPLICATION_TOKEN")
@@ -79,26 +80,50 @@ async def query_agent(request: QueryRequest):
     payload = {
         "input_value": request.message,
         "output_type": "chat",
-        "input_type": "chat"
+        "input_type": "chat",
+        "tweaks": {}  # Add any necessary tweaks here
     }
 
     try:
         logger.info(f"Sending request to Langflow API: {api_url}")
+        logger.info(f"Request payload: {json.dumps(payload)}")
         response = requests.post(api_url, json=payload, headers=headers)
-        response.raise_for_status()  # Raise exception for bad status codes
-        return response.json()
+        
+        # Log the raw response
+        logger.info(f"Raw response status: {response.status_code}")
+        logger.info(f"Raw response content: {response.text}")
+        
+        # Try to parse JSON response
+        try:
+            response_data = response.json()
+            logger.info(f"Parsed response: {json.dumps(response_data)}")
+            return response_data
+        except json.JSONDecodeError as je:
+            logger.error(f"Failed to parse JSON response: {str(je)}")
+            return {
+                "status": "error",
+                "message": f"Invalid JSON response from Langflow API: {response.text[:200]}..."
+            }
+            
     except requests.exceptions.RequestException as e:
         logger.error(f"Langflow request failed: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Langflow request failed: {str(e)}"
-        )
+        return {
+            "status": "error",
+            "message": f"Langflow request failed: {str(e)}",
+            "details": {
+                "url": api_url,
+                "error_type": type(e).__name__
+            }
+        }
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Unexpected error: {str(e)}"
-        )
+        return {
+            "status": "error",
+            "message": f"Unexpected error: {str(e)}",
+            "details": {
+                "error_type": type(e).__name__
+            }
+        }
 
 if __name__ == "__main__":
     import uvicorn
