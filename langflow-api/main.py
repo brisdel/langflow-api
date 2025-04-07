@@ -14,6 +14,9 @@ APPLICATION_TOKEN = os.getenv("APPLICATION_TOKEN")
 
 class QueryRequest(BaseModel):
     message: str
+@app.get("/")
+def root():
+    return {"message": "API is alive"}
 
 @app.post("/query")
 def query_agent(request: QueryRequest):
