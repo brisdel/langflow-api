@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Dict, Any
 import requests
 import os
 import logging
@@ -26,31 +27,26 @@ BASE_API_URL = "https://api.langflow.astra.datastax.com"
 LANGFLOW_ID = "ed6c45f6-6029-47a5-a6ee-86d7caf24d60"
 FLOW_ID = "c4369450-5685-4bb4-85b3-f47b7dd0e917"
 
-# Tweaks structure
-TWEAKS = {
-    "Agent-cfbu4": {},
-    "ChatInput-URWrQ": {},
-    "ChatOutput-8jfCH": {},
-    "AstraDBToolComponent-HX1wm": {},
-    "AstraDB-1zteC": {},
-    "ParseDataFrame-uutqi": {},
-    "DataToDataFrame-cLytb": {},
-    "Prompt-BPTjL": {},
-    "Prompt-k5ksd": {},
-    "Agent-GEpuC": {},
-    "DeepSeekModelComponent-boSdy": {}
-}
-
-class QueryRequest(BaseModel):
-    message: str
+class LangflowRequest(BaseModel):
+    input_value: str
+    output_type: str = "chat"
+    input_type: str = "chat"
+    tweaks: Dict[str, Any] = {
+        "Agent-cfbu4": {},
+        "ChatInput-URWrQ": {},
+        "ChatOutput-8jfCH": {},
+        "AstraDBToolComponent-HX1wm": {},
+        "AstraDB-1zteC": {},
+        "ParseDataFrame-uutq1": {}
+    }
 
 @app.get("/")
 async def root():
     return {"message": "API is alive"}
 
 @app.post("/query")
-async def query_agent(request: QueryRequest):
-    logger.info(f"Query endpoint called with message: {request.message}")
+async def query_agent(request: LangflowRequest):
+    logger.info(f"Query endpoint called with input: {request.input_value}")
     
     application_token = os.getenv("APPLICATION_TOKEN")
     if not application_token:
@@ -66,12 +62,8 @@ async def query_agent(request: QueryRequest):
         "Content-Type": "application/json"
     }
     
-    payload = {
-        "input_value": request.message,
-        "output_type": "chat",
-        "input_type": "chat",
-        "tweaks": TWEAKS
-    }
+    # Use the request model directly as the payload
+    payload = request.dict()
 
     try:
         logger.info(f"Sending request to: {api_url}")
