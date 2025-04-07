@@ -4,7 +4,6 @@ from pydantic import BaseModel
 import requests
 import os
 import logging
-import sys
 import json
 
 # Configure logging
@@ -16,7 +15,7 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for now
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,102 +26,86 @@ BASE_API_URL = "https://api.langflow.astra.datastax.com"
 LANGFLOW_ID = "ed6c45f6-6029-47a5-a6ee-86d7caf24d60"
 FLOW_ID = "c4369450-5685-4bb4-85b3-f47b7dd0e917"
 
-# Request body model
+# Tweaks structure
+TWEAKS = {
+    "Agent-cfbu4": {},
+    "ChatInput-URWrQ": {},
+    "ChatOutput-8jfCH": {},
+    "AstraDBToolComponent-HX1wm": {},
+    "AstraDB-1zteC": {},
+    "ParseDataFrame-uutqi": {},
+    "DataToDataFrame-cLytb": {},
+    "Prompt-BPTjL": {},
+    "Prompt-k5ksd": {},
+    "Agent-GEpuC": {},
+    "DeepSeekModelComponent-boSdy": {}
+}
+
 class QueryRequest(BaseModel):
     message: str
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Application starting up...")
-    # Verify environment variables
-    application_token = os.getenv("APPLICATION_TOKEN")
-    if not application_token:
-        logger.error("APPLICATION_TOKEN not found in environment variables!")
-    else:
-        logger.info("APPLICATION_TOKEN found in environment variables")
-    
-    port = os.getenv("PORT")
-    logger.info(f"PORT configured as: {port}")
-
-# Health check route
 @app.get("/")
 async def root():
-    logger.info("Health check endpoint called")
-    return {
-        "status": "healthy",
-        "message": "API is alive",
-        "environment": {
-            "port": os.getenv("PORT"),
-            "has_token": bool(os.getenv("APPLICATION_TOKEN"))
-        }
-    }
+    return {"message": "API is alive"}
 
-# Langflow query route
 @app.post("/query")
 async def query_agent(request: QueryRequest):
     logger.info(f"Query endpoint called with message: {request.message}")
     
-    # Dynamically load the token
     application_token = os.getenv("APPLICATION_TOKEN")
-
     if not application_token:
         logger.error("APPLICATION_TOKEN not found")
-        raise HTTPException(
-            status_code=500,
-            detail="APPLICATION_TOKEN is not set in environment variables."
-        )
+        return {
+            "status": "error",
+            "message": "APPLICATION_TOKEN is not set"
+        }
 
     api_url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}"
     headers = {
         "Authorization": f"Bearer {application_token}",
         "Content-Type": "application/json"
     }
+    
     payload = {
         "input_value": request.message,
         "output_type": "chat",
         "input_type": "chat",
-        "tweaks": {}  # Add any necessary tweaks here
+        "tweaks": TWEAKS
     }
 
     try:
-        logger.info(f"Sending request to Langflow API: {api_url}")
-        logger.info(f"Request payload: {json.dumps(payload)}")
+        logger.info(f"Sending request to: {api_url}")
+        logger.info(f"With payload: {json.dumps(payload, indent=2)}")
+        
         response = requests.post(api_url, json=payload, headers=headers)
         
-        # Log the raw response
-        logger.info(f"Raw response status: {response.status_code}")
-        logger.info(f"Raw response content: {response.text}")
+        # Log response details
+        logger.info(f"Response status code: {response.status_code}")
+        logger.info(f"Response headers: {dict(response.headers)}")
+        logger.info(f"Response content: {response.text}")
         
-        # Try to parse JSON response
-        try:
-            response_data = response.json()
-            logger.info(f"Parsed response: {json.dumps(response_data)}")
-            return response_data
-        except json.JSONDecodeError as je:
-            logger.error(f"Failed to parse JSON response: {str(je)}")
+        if response.status_code != 200:
             return {
                 "status": "error",
-                "message": f"Invalid JSON response from Langflow API: {response.text[:200]}..."
+                "message": f"Langflow API returned status {response.status_code}",
+                "details": response.text
             }
             
+        return response.json()
+        
     except requests.exceptions.RequestException as e:
-        logger.error(f"Langflow request failed: {str(e)}")
+        logger.error(f"Request failed: {str(e)}")
         return {
             "status": "error",
-            "message": f"Langflow request failed: {str(e)}",
-            "details": {
-                "url": api_url,
-                "error_type": type(e).__name__
-            }
+            "message": f"Request failed: {str(e)}",
+            "details": str(e)
         }
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         return {
             "status": "error",
             "message": f"Unexpected error: {str(e)}",
-            "details": {
-                "error_type": type(e).__name__
-            }
+            "details": str(e)
         }
 
 if __name__ == "__main__":
