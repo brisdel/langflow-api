@@ -1,14 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import requests
 import os
 import logging
 import json
-import sys
 
-# Configure logging with more details
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
@@ -27,18 +26,10 @@ BASE_API_URL = "https://api.langflow.astra.datastax.com"
 LANGFLOW_ID = "ed6c45f6-6029-47a5-a6ee-86d7caf24d60"
 FLOW_ID = "c4369450-5685-4bb4-85b3-f47b7dd0e917"
 
+# Simplified tweaks structure
 TWEAKS = {
     "Agent-cfbu4": {},
-    "ChatInput-URWrQ": {},
-    "ChatOutput-8jfCH": {},
-    "AstraDBToolComponent-HX1wm": {},
-    "AstraDB-1zteC": {},
-    "ParseDataFrame-uutq1": {},
-    "DataToDataFrame-cLytb": {},
-    "Prompt-BPTjL": {},
-    "Prompt-k5ksd": {},
-    "Agent-GEpuC": {},
-    "DeepSeekModelComponent-boSdy": {}
+    "ChatOutput-8jfCH": {}
 }
 
 class MessageRequest(BaseModel):
@@ -48,150 +39,123 @@ class MessageRequest(BaseModel):
 async def root():
     return {
         "message": "API is alive",
-        "status": "healthy"
+        "status": "healthy",
+        "notice": "The Langflow API may take a long time to respond or time out. Please use short, simple queries."
     }
 
 @app.post("/query")
 async def query_agent(request: MessageRequest):
     logger.info(f"Query endpoint called with message: {request.message}")
     
-    # Print complete request for debugging
-    logger.info(f"Complete request object: {request}")
-    
-    # Dynamically load the token
-    application_token = os.getenv("APPLICATION_TOKEN")
-    if not application_token:
-        logger.error("APPLICATION_TOKEN not found in environment variables")
+    # Check if message is too long
+    if len(request.message) > 200:
         return {
             "status": "error",
-            "message": "APPLICATION_TOKEN is not set"
+            "message": "Message is too long. Please limit your message to 200 characters to avoid timeouts."
         }
     
-    # Log token length for verification (don't log the actual token)
-    logger.info(f"APPLICATION_TOKEN length: {len(application_token)}")
+    application_token = os.getenv("APPLICATION_TOKEN")
+    if not application_token:
+        logger.error("APPLICATION_TOKEN not found")
+        return {
+            "status": "error",
+            "message": "API configuration error: Authentication token is missing."
+        }
 
-    # Construct API URL
     api_url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}"
-    logger.info(f"API URL: {api_url}")
-    
-    # Prepare headers
     headers = {
         "Authorization": f"Bearer {application_token}",
         "Content-Type": "application/json",
         "Accept": "application/json"
     }
     
-    # Prepare payload
+    # Simplified payload
     payload = {
         "input_value": request.message,
-        "output_type": "chat",
-        "input_type": "chat",
+        "output_type": "text",
+        "input_type": "text",
         "tweaks": TWEAKS
     }
-    
-    logger.info(f"Payload: {json.dumps(payload)}")
-    
-    try:
-        # Make direct API request first to test connectivity
-        logger.info("Attempting to make a direct test request to Langflow API")
-        direct_response = requests.get(f"{BASE_API_URL}/health", timeout=10)
-        logger.info(f"Direct test response status: {direct_response.status_code}")
-        logger.info(f"Direct test response content: {direct_response.text[:100]}")  # Log first 100 chars
-        
-        # Now make the actual request
-        logger.info(f"Sending main request to Langflow API: {api_url}")
-        response = requests.post(
-            api_url, 
-            json=payload, 
-            headers=headers, 
-            timeout=180  # 3-minute timeout
-        )
-        
-        # Log detailed response info for debugging
-        logger.info(f"Response status code: {response.status_code}")
-        logger.info(f"Response headers: {dict(response.headers)}")
-        if response.content:
-            content_preview = response.content[:200].decode('utf-8', errors='replace')
-            logger.info(f"Response content (first 200 chars): {content_preview}")
-        else:
-            logger.info("Response content is empty")
-            
-        # Handle empty responses
-        if not response.content:
-            return {
-                "status": "error",
-                "message": "Empty response from Langflow API"
-            }
-            
-        # Check status code
-        if response.status_code != 200:
-            return {
-                "status": "error",
-                "message": f"Langflow API returned status {response.status_code}",
-                "details": response.text
-            }
 
-        # Try to parse as JSON
+    try:
+        logger.info(f"Sending request to Langflow API: {api_url}")
+        
+        # Shorter timeout (60 seconds) since we now know it tends to time out
+        response = requests.post(api_url, json=payload, headers=headers, timeout=60)
+        
+        if response.status_code != 200:
+            logger.error(f"Langflow API returned non-200 status: {response.status_code}")
+            
+            if response.status_code == 403:
+                return {
+                    "status": "error",
+                    "message": "Authentication error with Langflow API. Please check your API token."
+                }
+            elif response.status_code == 504 or response.status_code == 502:
+                return {
+                    "status": "error",
+                    "message": "The Langflow API timed out. Please try a shorter, simpler query or try again later."
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": f"The Langflow API returned an error (status {response.status_code})."
+                }
+        
+        # Try to parse JSON response
         try:
             response_data = response.json()
-            logger.info("Successfully parsed response as JSON")
+            logger.info("Successfully parsed response from Langflow API")
             
-            # Try to extract the message from the nested structure
+            # Extract message text (if available)
             try:
                 if (response_data.get("outputs") and 
                     len(response_data["outputs"]) > 0 and 
                     response_data["outputs"][0].get("outputs") and 
-                    len(response_data["outputs"][0]["outputs"]) > 0 and
-                    response_data["outputs"][0]["outputs"][0].get("results") and
-                    response_data["outputs"][0]["outputs"][0]["results"].get("message") and
-                    response_data["outputs"][0]["outputs"][0]["results"]["message"].get("text")):
-                    
-                    message_text = response_data["outputs"][0]["outputs"][0]["results"]["message"]["text"]
+                    len(response_data["outputs"][0]["outputs"]) > 0):
                     
                     return {
                         "status": "success",
-                        "message": message_text
+                        "message": "Response received from Langflow API",
+                        "data": response_data
                     }
                 else:
-                    logger.info("Could not extract message text from nested structure, returning full response")
                     return {
                         "status": "success",
-                        "response": response_data
+                        "message": "Response received from Langflow API",
+                        "data": response_data
                     }
-            except Exception as extract_error:
-                logger.error(f"Error extracting message from response: {str(extract_error)}")
+            except Exception as e:
+                logger.error(f"Error extracting message from response: {str(e)}")
                 return {
                     "status": "success",
-                    "response": response_data,
-                    "extraction_error": str(extract_error)
+                    "message": "Response received but could not extract data",
+                    "data": response_data
                 }
-                
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse response as JSON: {str(e)}")
+        except json.JSONDecodeError:
+            logger.error("Failed to parse JSON response from Langflow API")
             return {
                 "status": "error",
-                "message": "Invalid JSON response from Langflow API",
-                "raw_response": response.text[:1000] if response.text else "Empty response"
+                "message": "Received invalid response from Langflow API (not valid JSON)"
             }
-            
+    
     except requests.exceptions.Timeout:
         logger.error("Request to Langflow API timed out")
         return {
             "status": "error",
-            "message": "Request timed out. The Langflow API is taking too long to respond."
+            "message": "The Langflow API took too long to respond. Please try a shorter, simpler query or try again later."
         }
     except requests.exceptions.RequestException as e:
         logger.error(f"Request to Langflow API failed: {str(e)}")
         return {
             "status": "error",
-            "message": f"Request to Langflow API failed: {str(e)}"
+            "message": "Could not connect to the Langflow API. The service may be down or unreachable."
         }
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         return {
             "status": "error",
-            "message": f"Unexpected error: {str(e)}",
-            "error_type": str(type(e).__name__)
+            "message": "An unexpected error occurred while processing your request."
         }
 
 if __name__ == "__main__":
