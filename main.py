@@ -6,8 +6,11 @@ import json
 import requests
 import os
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with more detail
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
@@ -64,19 +67,38 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     }
     
     try:
-        logger.info(f"Sending request to Langflow API for message: {message}")
-        response = requests.post(api_url, json=payload, headers=headers, timeout=180)  # 3 minute timeout
+        logger.info(f"Calling Langflow API at: {api_url}")
+        logger.info(f"With headers: {headers}")
+        logger.info(f"With payload: {json.dumps(payload, indent=2)}")
         
-        logger.info(f"Received response from Langflow API with status code: {response.status_code}")
+        # Increased timeout to 5 minutes (300 seconds)
+        response = requests.post(api_url, json=payload, headers=headers, timeout=300)
+        
+        logger.info(f"Response status code: {response.status_code}")
+        logger.info(f"Response headers: {dict(response.headers)}")
+        
+        try:
+            response_text = response.text
+            logger.info(f"Response text: {response_text[:1000]}")  # Log first 1000 chars
+        except Exception as e:
+            logger.error(f"Could not read response text: {str(e)}")
         
         if response.status_code != 200:
-            logger.error(f"Langflow API error: {response.text}")
+            error_msg = f"Langflow API returned status {response.status_code}"
+            try:
+                error_detail = response.json()
+                error_msg += f": {json.dumps(error_detail)}"
+            except:
+                error_msg += f": {response.text}"
+            
+            logger.error(error_msg)
             raise HTTPException(
                 status_code=response.status_code,
-                detail=f"Langflow API returned status {response.status_code}: {response.text}"
+                detail=error_msg
             )
         
         response_data = response.json()
+        logger.info(f"Successfully parsed response JSON: {json.dumps(response_data, indent=2)}")
         
         # Extract the actual message from the Langflow response structure
         if (response_data.get("outputs") and 
@@ -90,14 +112,14 @@ def call_langflow_api(message: str, application_token: str) -> dict:
             message_text = response_data["outputs"][0]["outputs"][0]["results"]["message"]["text"]
             return {"status": "success", "data": message_text}
         else:
-            logger.warning("Unexpected response structure from Langflow API")
-            return {"status": "success", "data": response_data}  # Return full response if structure is different
+            logger.warning(f"Unexpected response structure. Full response: {json.dumps(response_data, indent=2)}")
+            return {"status": "success", "data": response_data}
             
     except requests.exceptions.Timeout:
-        logger.error("Request to Langflow API timed out after 180 seconds")
+        logger.error("Request to Langflow API timed out after 300 seconds")
         raise HTTPException(
             status_code=504,
-            detail="Request timed out after 180 seconds. The Langflow API is taking too long to respond."
+            detail="Request timed out after 300 seconds. The Langflow API is taking too long to respond."
         )
     except requests.exceptions.RequestException as e:
         logger.error(f"Request to Langflow API failed: {str(e)}")
@@ -120,13 +142,15 @@ def call_langflow_api(message: str, application_token: str) -> dict:
 
 @app.get("/")
 def root():
-    """Health check endpoint"""
+    """Health check endpoint that also verifies environment variables"""
+    application_token = os.getenv("APPLICATION_TOKEN")
     return {
         "status": "healthy",
         "message": "API is alive",
         "environment": {
             "port": os.getenv("PORT"),
-            "has_token": bool(os.getenv("APPLICATION_TOKEN"))
+            "has_token": bool(application_token),
+            "token_length": len(application_token) if application_token else 0
         }
     }
 
@@ -154,7 +178,7 @@ async def query(request: QueryRequest):
         return response
         
     except HTTPException:
-        raise  # Re-raise HTTP exceptions as they already have the right format
+        raise
     except Exception as e:
         logger.error(f"Unexpected error in query endpoint: {str(e)}")
         raise HTTPException(
