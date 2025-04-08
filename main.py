@@ -7,7 +7,7 @@ import logging
 import json
 import sys
 
-# Configure logging with more detail
+# Configure logging with more details
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
