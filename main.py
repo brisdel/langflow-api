@@ -27,21 +27,14 @@ app.add_middleware(
 # Constants for Langflow API
 BASE_API_URL = "https://api.langflow.astra.datastax.com"
 LANGFLOW_ID = "ed6c45f6-6029-47a5-a6ee-86d7caf24d60"
-FLOW_ID = "c4369450-5685-4bb4-85b3-f47b7dd0e917"
+FLOW_ID = "3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
 
-# Tweaks structure
+# Simplified tweaks structure for the new flow
 TWEAKS = {
-    "Agent-cfbu4": {},
-    "ChatInput-URWrQ": {},
-    "ChatOutput-8jfCH": {},
-    "AstraDBToolComponent-HX1wm": {},
-    "AstraDB-1zteC": {},
-    "ParseDataFrame-uutq1": {},
-    "DataToDataFrame-cLytb": {},
-    "Prompt-BPTjL": {},
-    "Prompt-k5ksd": {},
-    "Agent-GEpuC": {},
-    "DeepSeekModelComponent-boSdy": {}
+    "Agent-dlR1n": {},
+    "ChatInput-cnDzP": {},
+    "ChatOutput-Ffc1R": {},
+    "AstraDBToolComponent-OkQEv": {}
 }
 
 class QueryRequest(BaseModel):
@@ -68,11 +61,10 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     
     try:
         logger.info(f"Calling Langflow API at: {api_url}")
-        logger.info(f"With headers: {headers}")
         logger.info(f"With payload: {json.dumps(payload, indent=2)}")
         
-        # Increased timeout to 5 minutes (300 seconds)
-        response = requests.post(api_url, json=payload, headers=headers, timeout=300)
+        # Using a 60-second timeout for the simpler flow
+        response = requests.post(api_url, json=payload, headers=headers, timeout=60)
         
         logger.info(f"Response status code: {response.status_code}")
         logger.info(f"Response headers: {dict(response.headers)}")
@@ -116,10 +108,10 @@ def call_langflow_api(message: str, application_token: str) -> dict:
             return {"status": "success", "data": response_data}
             
     except requests.exceptions.Timeout:
-        logger.error("Request to Langflow API timed out after 300 seconds")
+        logger.error("Request to Langflow API timed out after 60 seconds")
         raise HTTPException(
             status_code=504,
-            detail="Request timed out after 300 seconds. The Langflow API is taking too long to respond."
+            detail="Request timed out after 60 seconds. The Langflow API is taking too long to respond."
         )
     except requests.exceptions.RequestException as e:
         logger.error(f"Request to Langflow API failed: {str(e)}")
