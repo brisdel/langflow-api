@@ -5,6 +5,7 @@ import logging
 import json
 import requests
 import os
+import time
 
 # Configure logging with more detail
 logging.basicConfig(
@@ -65,13 +66,16 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     }
     
     try:
-        logger.info(f"Calling Langflow API at: {api_url}")
+        logger.info(f"Starting API call to Langflow at: {api_url}")
         logger.info(f"With payload: {json.dumps(payload, indent=2)}")
-        logger.info(f"Authorization header starts with: {headers['Authorization'][:15]}...")  # Log first part of auth header safely
+        logger.info(f"Authorization header starts with: {headers['Authorization'][:15]}...")
         
-        # Using a 60-second timeout for the simpler flow
-        response = requests.post(api_url, json=payload, headers=headers, timeout=60)
+        # Increased timeout to 180 seconds
+        start_time = time.time()
+        response = requests.post(api_url, json=payload, headers=headers, timeout=180)
+        end_time = time.time()
         
+        logger.info(f"API call took {end_time - start_time:.2f} seconds")
         logger.info(f"Response status code: {response.status_code}")
         logger.info(f"Response headers: {dict(response.headers)}")
         
@@ -114,10 +118,10 @@ def call_langflow_api(message: str, application_token: str) -> dict:
             return {"status": "success", "data": response_data}
             
     except requests.exceptions.Timeout:
-        logger.error("Request to Langflow API timed out after 60 seconds")
+        logger.error("Request to Langflow API timed out after 180 seconds")
         raise HTTPException(
             status_code=504,
-            detail="Request timed out after 60 seconds. The Langflow API is taking too long to respond."
+            detail="Request timed out after 180 seconds. The Langflow API is taking too long to respond. Please try again. adding additional comments just for validation"
         )
     except requests.exceptions.RequestException as e:
         logger.error(f"Request to Langflow API failed: {str(e)}")
