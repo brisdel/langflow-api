@@ -43,7 +43,7 @@ class QueryRequest(BaseModel):
 
 def call_langflow_api(message: str, application_token: str) -> dict:
     """
-    Call the Langflow API with error handling and logging
+    Call the Langflow API with error handling, logging, and retry logic
     """
     api_url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}"
     
@@ -64,83 +64,116 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         "input_type": "chat",
         "tweaks": TWEAKS
     }
+
+    max_retries = 2
+    retry_delay = 30  # seconds
+    attempt = 0
     
-    try:
-        logger.info(f"Starting API call to Langflow at: {api_url}")
-        logger.info(f"With payload: {json.dumps(payload, indent=2)}")
-        logger.info(f"Authorization header starts with: {headers['Authorization'][:15]}...")
-        
-        # Increased timeout to 180 seconds
-        start_time = time.time()
-        response = requests.post(api_url, json=payload, headers=headers, timeout=180)
-        end_time = time.time()
-        
-        logger.info(f"API call took {end_time - start_time:.2f} seconds")
-        logger.info(f"Response status code: {response.status_code}")
-        logger.info(f"Response headers: {dict(response.headers)}")
-        
+    while attempt <= max_retries:
         try:
-            response_text = response.text
-            logger.info(f"Response text: {response_text[:1000]}")  # Log first 1000 chars
-        except Exception as e:
-            logger.error(f"Could not read response text: {str(e)}")
-        
-        if response.status_code != 200:
-            error_msg = f"Langflow API returned status {response.status_code}"
-            try:
-                error_detail = response.json()
-                error_msg += f": {json.dumps(error_detail)}"
-            except:
-                error_msg += f": {response.text}"
+            logger.info(f"Starting API call to Langflow (attempt {attempt + 1}/{max_retries + 1}) at: {api_url}")
+            logger.info(f"With payload: {json.dumps(payload, indent=2)}")
+            logger.info(f"Authorization header starts with: {headers['Authorization'][:15]}...")
             
-            logger.error(error_msg)
+            start_time = time.time()
+            response = requests.post(api_url, json=payload, headers=headers, timeout=180)
+            end_time = time.time()
+            
+            logger.info(f"API call took {end_time - start_time:.2f} seconds")
+            logger.info(f"Response status code: {response.status_code}")
+            logger.info(f"Response headers: {dict(response.headers)}")
+            
+            try:
+                response_text = response.text
+                logger.info(f"Response text: {response_text[:1000]}")  # Log first 1000 chars
+            except Exception as e:
+                logger.error(f"Could not read response text: {str(e)}")
+            
+            if response.status_code == 504:
+                if attempt < max_retries:
+                    logger.warning(f"Langflow API returned 504 timeout. Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    attempt += 1
+                    continue
+                else:
+                    logger.error("Langflow API timed out after all retry attempts")
+                    raise HTTPException(
+                        status_code=504,
+                        detail=(
+                            "The Langflow API is experiencing high latency and timed out after "
+                            f"{max_retries + 1} attempts. This might be due to a complex query or "
+                            "high system load. Please try again with a simpler query or try later."
+                        )
+                    )
+            
+            if response.status_code != 200:
+                error_msg = f"Langflow API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {json.dumps(error_detail)}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                logger.error(error_msg)
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=error_msg
+                )
+            
+            response_data = response.json()
+            logger.info(f"Successfully parsed response JSON")
+            
+            # Extract the actual message from the Langflow response structure
+            if (response_data.get("outputs") and 
+                len(response_data["outputs"]) > 0 and 
+                response_data["outputs"][0].get("outputs") and 
+                len(response_data["outputs"][0]["outputs"]) > 0 and 
+                response_data["outputs"][0]["outputs"][0].get("results") and 
+                response_data["outputs"][0]["outputs"][0]["results"].get("message") and 
+                response_data["outputs"][0]["outputs"][0]["results"]["message"].get("text")):
+                
+                message_text = response_data["outputs"][0]["outputs"][0]["results"]["message"]["text"]
+                return {"status": "success", "data": message_text}
+            else:
+                logger.warning(f"Unexpected response structure. Full response: {json.dumps(response_data, indent=2)}")
+                return {"status": "success", "data": response_data}
+                
+        except requests.exceptions.Timeout:
+            if attempt < max_retries:
+                logger.warning(f"Request timed out. Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                attempt += 1
+                continue
+            logger.error("Request to Langflow API timed out after all retry attempts")
             raise HTTPException(
-                status_code=response.status_code,
-                detail=error_msg
+                status_code=504,
+                detail=(
+                    "Request timed out after 180 seconds and 3 retry attempts. "
+                    "The Langflow API is taking too long to respond. This might be due to "
+                    "a complex query or high system load. Please try again with a simpler "
+                    "query or try later."
+                )
+            )
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request to Langflow API failed: {str(e)}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to communicate with Langflow API: {str(e)}"
+            )
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Langflow API response: {str(e)}")
+            raise HTTPException(
+                status_code=502,
+                detail="Invalid response received from Langflow API"
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"An unexpected error occurred: {str(e)}"
             )
         
-        response_data = response.json()
-        logger.info(f"Successfully parsed response JSON")
-        
-        # Extract the actual message from the Langflow response structure
-        if (response_data.get("outputs") and 
-            len(response_data["outputs"]) > 0 and 
-            response_data["outputs"][0].get("outputs") and 
-            len(response_data["outputs"][0]["outputs"]) > 0 and 
-            response_data["outputs"][0]["outputs"][0].get("results") and 
-            response_data["outputs"][0]["outputs"][0]["results"].get("message") and 
-            response_data["outputs"][0]["outputs"][0]["results"]["message"].get("text")):
-            
-            message_text = response_data["outputs"][0]["outputs"][0]["results"]["message"]["text"]
-            return {"status": "success", "data": message_text}
-        else:
-            logger.warning(f"Unexpected response structure. Full response: {json.dumps(response_data, indent=2)}")
-            return {"status": "success", "data": response_data}
-            
-    except requests.exceptions.Timeout:
-        logger.error("Request to Langflow API timed out after 180 seconds")
-        raise HTTPException(
-            status_code=504,
-            detail="Request timed out after 180 seconds. The Langflow API is taking too long to respond. Please try again. adding additional comments just for validation"
-        )
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request to Langflow API failed: {str(e)}")
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to communicate with Langflow API: {str(e)}"
-        )
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse Langflow API response: {str(e)}")
-        raise HTTPException(
-            status_code=502,
-            detail="Invalid response received from Langflow API"
-        )
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"An unexpected error occurred: {str(e)}"
-        )
+        attempt += 1  # Increment attempt counter if we haven't returned or continued
 
 @app.get("/")
 def root():
