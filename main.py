@@ -46,8 +46,13 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     """
     api_url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}"
     
+    # Clean up the token and ensure proper format
+    token = application_token.strip()
+    if not token.startswith("Bearer "):
+        token = f"Bearer {token}"
+    
     headers = {
-        "Authorization": f"Bearer {application_token}",
+        "Authorization": token,
         "Content-Type": "application/json",
         "Accept": "application/json"
     }
@@ -62,6 +67,7 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     try:
         logger.info(f"Calling Langflow API at: {api_url}")
         logger.info(f"With payload: {json.dumps(payload, indent=2)}")
+        logger.info(f"Authorization header starts with: {headers['Authorization'][:15]}...")  # Log first part of auth header safely
         
         # Using a 60-second timeout for the simpler flow
         response = requests.post(api_url, json=payload, headers=headers, timeout=60)
@@ -90,7 +96,7 @@ def call_langflow_api(message: str, application_token: str) -> dict:
             )
         
         response_data = response.json()
-        logger.info(f"Successfully parsed response JSON: {json.dumps(response_data, indent=2)}")
+        logger.info(f"Successfully parsed response JSON")
         
         # Extract the actual message from the Langflow response structure
         if (response_data.get("outputs") and 
@@ -181,4 +187,4 @@ async def query(request: QueryRequest):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port) 
