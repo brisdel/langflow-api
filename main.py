@@ -58,10 +58,10 @@ def call_langflow_api(message: str, application_token: str) -> dict:
             detail="Please provide a valid part number in the format PA-XXXXX"
         )
 
-    # Construct the URL using the verified IDs
-    url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}"
+    # Construct the URL with stream=false parameter
+    url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}?stream=false"
     
-    logger.info(f"Making request to URL: {url}")  # Log the URL for verification
+    logger.info(f"Making request to URL: {url}")
 
     # Clean up the token and ensure proper format
     token = application_token.strip()
@@ -74,7 +74,7 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         "Authorization": token
     }
 
-    # Simple payload matching successful format
+    # Payload matching the exact format from the cURL example
     payload = {
         "input_value": f"Can you give me the name of part {part_number}?",
         "output_type": "chat",
@@ -82,10 +82,11 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     }
 
     logger.info(f"Making request with payload: {json.dumps(payload, indent=2)}")
+    logger.info(f"Using headers: {json.dumps({k: v if k != 'Authorization' else '[REDACTED]' for k, v in headers.items()}, indent=2)}")
 
     try:
-        # Send request with a short timeout since playground responds in 1.2s
-        response = requests.post(url, json=payload, headers=headers, timeout=5)
+        # Send request with a longer timeout since we're seeing context length issues
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
         response.raise_for_status()
         
         response_data = response.json()
@@ -105,10 +106,10 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         return {"status": "success", "data": response_data}
         
     except requests.exceptions.Timeout:
-        logger.error("Request to Langflow API timed out after 5 seconds")
+        logger.error("Request to Langflow API timed out")
         raise HTTPException(
             status_code=504,
-            detail="Request timed out. The API should respond in ~1-2 seconds. Please try again."
+            detail="Request timed out. Please try again."
         )
     except requests.exceptions.HTTPError as e:
         logger.error(f"HTTP error occurred: {str(e)}")
