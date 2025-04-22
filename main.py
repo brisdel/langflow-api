@@ -76,12 +76,16 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         "Authorization": token
     }
 
-    # Payload matching the official Langflow snippet format
+    # Payload matching the official Langflow snippet format, with tweaks for the tool
     payload = {
         "input_value": message, # Use the original message
         "output_type": "chat",
-        "input_type": "chat"
-        # "tweaks": {} # Keeping tweaks empty for now
+        "input_type": "chat",
+        "tweaks": {
+            "AstraDBToolComponent-OkQEv": { # Target the specific tool component
+                "partreferencenumber": part_number # Pass the required parameter
+            }
+        }
     }
 
     logger.info(f"Making request with payload: {json.dumps(payload, indent=2)}")
