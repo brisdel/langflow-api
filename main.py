@@ -28,7 +28,7 @@ app.add_middleware(
 
 # Constants for Langflow API
 BASE_API_URL = "https://api.langflow.astra.datastax.com"
-LANGFLOW_ID = "dfd6fb5e-b2a8-4ea4-a71f-a71b9f8c95b1"
+LANGFLOW_ID = "ed6c45f6-6029-47a5-a6ee-86d7caf24d60"
 FLOW_ID = "3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
 FOLDER_ID = "0c08b713-d6fc-43ed-aff9-ebd1116ebb95"
 
