@@ -27,7 +27,7 @@ app.add_middleware(
 )
 
 # Constants for Langflow API
-BASE_API_URL = "https://astra.datastax.com/langflow"
+BASE_API_URL = "https://api.langflow.astra.datastax.com"
 LANGFLOW_ID = "dfd6fb5e-b2a8-4ea4-a71f-a71b9f8c95b1"
 FLOW_ID = "3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
 FOLDER_ID = "0c08b713-d6fc-43ed-aff9-ebd1116ebb95"
@@ -59,8 +59,8 @@ def call_langflow_api(message: str, application_token: str) -> dict:
             detail="Please provide a valid part number in the format PA-XXXXX"
         )
 
-    # Construct the URL with the correct structure
-    url = f"{BASE_API_URL}/{LANGFLOW_ID}/flow/{FLOW_ID}/folder/{FOLDER_ID}"
+    # Construct the URL using the API run endpoint structure
+    url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}?stream=false"
     
     logger.info(f"Making request to URL: {url}")
 
