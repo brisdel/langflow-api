@@ -68,10 +68,12 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     if not token.startswith("Bearer "):
         token = f"Bearer {token}"
 
-    # Headers
+    # Headers with updated auth format
     headers = {
         "Content-Type": "application/json",
-        "Authorization": token
+        "accept": "application/json",
+        "Authorization": token,
+        "X-API-Key": token.replace("Bearer ", "")  # Also send as X-API-Key
     }
 
     # Payload matching the exact format from the Langflow playground
