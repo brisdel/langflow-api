@@ -78,7 +78,16 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     payload = {
         "input_value": f"Can you give me the name of part {part_number}?",
         "output_type": "chat",
-        "input_type": "chat"
+        "input_type": "chat",
+        "tweaks": {
+            "model_params": {
+                "model": "gpt-3.5-turbo-16k",  # Use model with larger context window
+                "temperature": 0.7,
+                "max_tokens": 100
+            },
+            "chunk_size": 8000,  # Reduce chunk size for context
+            "chunk_overlap": 500
+        }
     }
 
     logger.info(f"Making request with payload: {json.dumps(payload, indent=2)}")
@@ -117,6 +126,13 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         try:
             error_detail = e.response.json()
             error_message = error_detail.get('detail', str(e))
+            
+            # Check specifically for context length error
+            if "context length" in str(error_message).lower():
+                raise HTTPException(
+                    status_code=413,
+                    detail="The query is too complex. Please try a simpler query or break it into smaller parts."
+                )
         except:
             error_message = str(e)
         raise HTTPException(
