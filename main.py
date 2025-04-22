@@ -6,6 +6,7 @@ import json
 import requests
 import os
 import time
+import re
 
 # Configure logging with more detail
 logging.basicConfig(
@@ -34,23 +35,40 @@ FLOW_ID = "3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
 TWEAKS = {
     "Agent-dlR1n": {
         "max_iterations": 1,
-        "max_execution_time": 60
+        "max_execution_time": 30,
+        "system_message": "You are a helpful assistant. Keep your responses very brief and to the point."
     },
     "ChatInput-cnDzP": {},
-    "ChatOutput-Ffc1R": {},
+    "ChatOutput-Ffc1R": {
+        "max_tokens": 500
+    },
     "AstraDBToolComponent-OkQEv": {
         "limit_results": 1,
-        "max_tokens": 1000
+        "max_tokens": 500,
+        "query_template": "SELECT name, description FROM parts WHERE part_number = '{part_number}' LIMIT 1"
     }
 }
 
 class QueryRequest(BaseModel):
     message: str
 
+def extract_part_number(message: str) -> str:
+    """Extract part number from message"""
+    match = re.search(r'PA-\d+', message)
+    return match.group(0) if match else None
+
 def call_langflow_api(message: str, application_token: str) -> dict:
     """
     Call the Langflow API with error handling, logging, and retry logic
     """
+    # Extract part number and modify message if needed
+    part_number = extract_part_number(message)
+    if part_number:
+        # Modify the query to be more specific
+        modified_message = f"Find only the name of {part_number}. Keep the response very brief."
+    else:
+        modified_message = message
+
     api_url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}"
     
     # Clean up the token and ensure proper format
@@ -66,7 +84,7 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         "Authorization": token,
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "User-Agent": "LangflowClient/1.0"  # Adding a user agent
+        "User-Agent": "LangflowClient/1.0"
     }
     
     # Log headers (excluding full token)
@@ -76,7 +94,7 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     logger.info(f"Request headers: {json.dumps(safe_headers, indent=2)}")
 
     payload = {
-        "input_value": message,
+        "input_value": modified_message,
         "output_type": "chat",
         "input_type": "chat",
         "tweaks": TWEAKS
