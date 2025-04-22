@@ -28,7 +28,7 @@ app.add_middleware(
 
 # Constants for Langflow API
 BASE_API_URL = "https://api.langflow.astra.datastax.com"
-LANGFLOW_ID = "dfd6fb5e-b2a8-4ea4-a71f-a71b9f8c95b1"
+LANGFLOW_ID = "ed6c45f6-6029-47a5-a6ee-86d7caf24d60"
 FLOW_ID = "3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
 
 # Minimal tweaks structure focusing only on the database query
@@ -48,7 +48,7 @@ def extract_part_number(message: str) -> str:
 
 def call_langflow_api(message: str, application_token: str) -> dict:
     """
-    Call the Langflow API using the playground-matched configuration
+    Call the Langflow API using verified configuration
     """
     # Extract part number
     part_number = extract_part_number(message)
@@ -58,8 +58,10 @@ def call_langflow_api(message: str, application_token: str) -> dict:
             detail="Please provide a valid part number in the format PA-XXXXX"
         )
 
-    # Construct the URL using the correct flow ID
+    # Construct the URL using the verified IDs
     url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}"
+    
+    logger.info(f"Making request to URL: {url}")  # Log the URL for verification
 
     # Clean up the token and ensure proper format
     token = application_token.strip()
@@ -72,14 +74,14 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         "Authorization": token
     }
 
-    # Simple payload matching playground behavior
+    # Simple payload matching successful format
     payload = {
-        "input_value": f"Can you give me the name of part {part_number}?",  # Exact format from playground
+        "input_value": f"Can you give me the name of part {part_number}?",
         "output_type": "chat",
         "input_type": "chat"
     }
 
-    logger.info(f"Making request to Langflow API with payload: {json.dumps(payload, indent=2)}")
+    logger.info(f"Making request with payload: {json.dumps(payload, indent=2)}")
 
     try:
         # Send request with a short timeout since playground responds in 1.2s
