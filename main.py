@@ -80,13 +80,11 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         "output_type": "chat",
         "input_type": "chat",
         "tweaks": {
-            "model_params": {
-                "model": "gpt-3.5-turbo-16k",  # Use model with larger context window
+            "AstraDBToolComponent-OkQEv": {  # Using the component ID from your configuration
+                "model_name": "gpt-3.5-turbo-16k",
                 "temperature": 0.7,
                 "max_tokens": 100
-            },
-            "chunk_size": 8000,  # Reduce chunk size for context
-            "chunk_overlap": 500
+            }
         }
     }
 
