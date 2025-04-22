@@ -31,21 +31,25 @@ BASE_API_URL = "https://api.langflow.astra.datastax.com"
 LANGFLOW_ID = "ed6c45f6-6029-47a5-a6ee-86d7caf24d60"
 FLOW_ID = "3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
 
-# Simplified tweaks structure for the new flow
+# Simplified tweaks structure with minimal configuration
 TWEAKS = {
     "Agent-dlR1n": {
         "max_iterations": 1,
-        "max_execution_time": 30,
-        "system_message": "You are a helpful assistant. Keep your responses very brief and to the point."
+        "max_execution_time": 10,
+        "system_message": "You are a direct assistant. Only return the exact information requested, nothing more.",
+        "temperature": 0,
+        "max_tokens": 100
     },
-    "ChatInput-cnDzP": {},
+    "ChatInput-cnDzP": {
+        "max_length": 50
+    },
     "ChatOutput-Ffc1R": {
-        "max_tokens": 500
+        "max_tokens": 100
     },
     "AstraDBToolComponent-OkQEv": {
         "limit_results": 1,
-        "max_tokens": 500,
-        "query_template": "SELECT name, description FROM parts WHERE part_number = '{part_number}' LIMIT 1"
+        "max_tokens": 100,
+        "query_template": "SELECT name FROM parts WHERE part_number = '{part_number}' LIMIT 1"
     }
 }
 
@@ -61,13 +65,16 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     """
     Call the Langflow API with error handling, logging, and retry logic
     """
-    # Extract part number and modify message if needed
+    # Extract part number and create a very specific query
     part_number = extract_part_number(message)
-    if part_number:
-        # Modify the query to be more specific
-        modified_message = f"Find only the name of {part_number}. Keep the response very brief."
-    else:
-        modified_message = message
+    if not part_number:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide a valid part number in the format PA-XXXXX"
+        )
+
+    # Create an extremely focused query
+    modified_message = f"Return only the name of part {part_number}. No additional information."
 
     api_url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}"
     
