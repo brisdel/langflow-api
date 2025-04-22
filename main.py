@@ -27,9 +27,10 @@ app.add_middleware(
 )
 
 # Constants for Langflow API
-BASE_API_URL = "https://api.langflow.astra.datastax.com"
-LANGFLOW_ID = "ed6c45f6-6029-47a5-a6ee-86d7caf24d60"
+BASE_API_URL = "https://astra.datastax.com/langflow"
+LANGFLOW_ID = "dfd6fb5e-b2a8-4ea4-a71f-a71b9f8c95b1"
 FLOW_ID = "3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
+FOLDER_ID = "0c08b713-d6fc-43ed-aff9-ebd1116ebb95"
 
 # Minimal tweaks structure focusing only on the database query
 TWEAKS = {
@@ -58,8 +59,8 @@ def call_langflow_api(message: str, application_token: str) -> dict:
             detail="Please provide a valid part number in the format PA-XXXXX"
         )
 
-    # Construct the URL with stream=false parameter
-    url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}?stream=false"
+    # Construct the URL with the correct structure
+    url = f"{BASE_API_URL}/{LANGFLOW_ID}/flow/{FLOW_ID}/folder/{FOLDER_ID}"
     
     logger.info(f"Making request to URL: {url}")
 
@@ -68,24 +69,16 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     if not token.startswith("Bearer "):
         token = f"Bearer {token}"
 
-    # Headers with updated auth format
+    # Headers with updated format
     headers = {
         "Content-Type": "application/json",
         "accept": "application/json",
-        "Authorization": token,
-        "X-API-Key": token.replace("Bearer ", "")  # Also send as X-API-Key
+        "Authorization": token
     }
 
     # Payload matching the exact format from the Langflow playground
     payload = {
-        "input_value": message,  # Send the original message
-        "output_type": "chat",
-        "input_type": "chat",
-        "tweaks": {
-            "AstraDBToolComponent-OkQEv": {
-                "query": message  # Pass the full original message to match playground behavior
-            }
-        }
+        "partreferencenumber": part_number
     }
 
     logger.info(f"Making request with payload: {json.dumps(payload, indent=2)}")
