@@ -78,12 +78,12 @@ def call_langflow_api(message: str, application_token: str) -> dict:
 
     # Payload matching the exact format from the Langflow playground
     payload = {
-        "input_value": f"Can you give me the name of part {part_number}?",
+        "input_value": message,  # Send the original message
         "output_type": "chat",
         "input_type": "chat",
         "tweaks": {
             "AstraDBToolComponent-OkQEv": {
-                "query": f"Can you give me the name of part {part_number}?"
+                "query": message  # Pass the full original message to match playground behavior
             }
         }
     }
