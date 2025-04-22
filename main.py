@@ -31,25 +31,10 @@ BASE_API_URL = "https://api.langflow.astra.datastax.com"
 LANGFLOW_ID = "ed6c45f6-6029-47a5-a6ee-86d7caf24d60"
 FLOW_ID = "3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
 
-# Simplified tweaks structure with minimal configuration
+# Minimal tweaks structure focusing only on the database query
 TWEAKS = {
-    "Agent-dlR1n": {
-        "max_iterations": 1,
-        "max_execution_time": 10,
-        "system_message": "You are a direct assistant. Only return the exact information requested, nothing more.",
-        "temperature": 0,
-        "max_tokens": 100
-    },
-    "ChatInput-cnDzP": {
-        "max_length": 50
-    },
-    "ChatOutput-Ffc1R": {
-        "max_tokens": 100
-    },
     "AstraDBToolComponent-OkQEv": {
-        "limit_results": 1,
-        "max_tokens": 100,
-        "query_template": "SELECT name FROM parts WHERE part_number = '{part_number}' LIMIT 1"
+        "query": None  # Will be set dynamically
     }
 }
 
@@ -63,9 +48,9 @@ def extract_part_number(message: str) -> str:
 
 def call_langflow_api(message: str, application_token: str) -> dict:
     """
-    Call the Langflow API with error handling, logging, and retry logic
+    Call the Langflow API using the standard structure
     """
-    # Extract part number and create a very specific query
+    # Extract part number
     part_number = extract_part_number(message)
     if not part_number:
         raise HTTPException(
@@ -73,173 +58,80 @@ def call_langflow_api(message: str, application_token: str) -> dict:
             detail="Please provide a valid part number in the format PA-XXXXX"
         )
 
-    # Create an extremely focused query
-    modified_message = f"Return only the name of part {part_number}. No additional information."
+    # Construct the URL exactly as in the example
+    url = f"https://api.langflow.astra.datastax.com/lf/ed6c45f6-6029-47a5-a6ee-86d7caf24d60/api/v1/run/3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
 
-    api_url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}"
-    
     # Clean up the token and ensure proper format
     token = application_token.strip()
     if not token.startswith("Bearer "):
         token = f"Bearer {token}"
-    
-    # Log token format (safely)
-    logger.info(f"Token format check - starts with 'Bearer ': {token.startswith('Bearer ')}")
-    logger.info(f"Token length: {len(token)}")
-    
+
+    # Headers exactly as in the example
     headers = {
-        "Authorization": token,
         "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": "LangflowClient/1.0"
+        "Authorization": token
     }
-    
-    # Log headers (excluding full token)
-    safe_headers = headers.copy()
-    if 'Authorization' in safe_headers:
-        safe_headers['Authorization'] = safe_headers['Authorization'][:15] + '...'
-    logger.info(f"Request headers: {json.dumps(safe_headers, indent=2)}")
 
+    # Basic payload structure as in the example
     payload = {
-        "input_value": modified_message,
+        "input_value": f"What is the name of part {part_number}?",
         "output_type": "chat",
-        "input_type": "chat",
-        "tweaks": TWEAKS
+        "input_type": "chat"
     }
 
-    max_retries = 2
-    retry_delay = 30  # seconds
-    attempt = 0
-    
-    while attempt <= max_retries:
-        try:
-            logger.info(f"Starting API call to Langflow (attempt {attempt + 1}/{max_retries + 1}) at: {api_url}")
-            logger.info(f"With payload: {json.dumps(payload, indent=2)}")
-            
-            start_time = time.time()
-            response = requests.post(api_url, json=payload, headers=headers, timeout=180)
-            end_time = time.time()
-            
-            logger.info(f"API call took {end_time - start_time:.2f} seconds")
-            logger.info(f"Response status code: {response.status_code}")
-            logger.info(f"Response headers: {dict(response.headers)}")
-            
-            try:
-                response_text = response.text
-                logger.info(f"Response text: {response_text[:1000]}")  # Log first 1000 chars
-            except Exception as e:
-                logger.error(f"Could not read response text: {str(e)}")
-            
-            if response.status_code == 403:
-                logger.error("Authentication error with Langflow API")
-                raise HTTPException(
-                    status_code=403,
-                    detail="Authentication failed with Langflow API. Please verify your API token is valid and has not expired."
-                )
-            
-            if response.status_code == 504:
-                if attempt < max_retries:
-                    logger.warning(f"Langflow API returned 504 timeout. Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                    attempt += 1
-                    continue
-                else:
-                    logger.error("Langflow API timed out after all retry attempts")
-                    raise HTTPException(
-                        status_code=504,
-                        detail=(
-                            "The Langflow API is experiencing high latency and timed out after "
-                            f"{max_retries + 1} attempts. This might be due to a complex query or "
-                            "high system load. Please try again with a simpler query or try later."
-                        )
-                    )
-            
-            if response.status_code != 200:
-                error_msg = f"Langflow API returned status {response.status_code}"
-                try:
-                    error_detail = response.json()
-                    
-                    # Check for context length exceeded error
-                    if isinstance(error_detail, dict) and 'detail' in error_detail:
-                        detail_str = str(error_detail['detail'])
-                        if 'maximum context length' in detail_str:
-                            logger.error(f"Context length exceeded: {detail_str}")
-                            raise HTTPException(
-                                status_code=413,  # Payload Too Large
-                                detail=(
-                                    "The query is generating too much data. Please try to:\n"
-                                    "1. Ask about a more specific aspect of the part\n"
-                                    "2. Break your question into smaller parts\n"
-                                    "For example, instead of asking for all information, "
-                                    "try asking specifically about the name, description, "
-                                    "or a specific attribute of the part."
-                                )
-                            )
-                    
-                    error_msg += f": {json.dumps(error_detail)}"
-                except:
-                    error_msg += f": {response.text}"
-                
-                logger.error(error_msg)
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=error_msg
-                )
-            
-            response_data = response.json()
-            logger.info(f"Successfully parsed response JSON")
-            
-            # Extract the actual message from the Langflow response structure
-            if (response_data.get("outputs") and 
-                len(response_data["outputs"]) > 0 and 
-                response_data["outputs"][0].get("outputs") and 
-                len(response_data["outputs"][0]["outputs"]) > 0 and 
-                response_data["outputs"][0]["outputs"][0].get("results") and 
-                response_data["outputs"][0]["outputs"][0]["results"].get("message") and 
-                response_data["outputs"][0]["outputs"][0]["results"]["message"].get("text")):
-                
-                message_text = response_data["outputs"][0]["outputs"][0]["results"]["message"]["text"]
-                return {"status": "success", "data": message_text}
-            else:
-                logger.warning(f"Unexpected response structure. Full response: {json.dumps(response_data, indent=2)}")
-                return {"status": "success", "data": response_data}
-                
-        except requests.exceptions.Timeout:
-            if attempt < max_retries:
-                logger.warning(f"Request timed out. Retrying in {retry_delay} seconds...")
-                time.sleep(retry_delay)
-                attempt += 1
-                continue
-            logger.error("Request to Langflow API timed out after all retry attempts")
+    logger.info(f"Making request to Langflow API with payload: {json.dumps(payload, indent=2)}")
+
+    try:
+        # Send API request exactly as in the example
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()  # Raise exception for bad status codes
+        
+        response_data = response.json()
+        logger.info(f"Received response: {json.dumps(response_data, indent=2)}")
+        
+        return {"status": "success", "data": response_data}
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error making API request: {str(e)}")
+        if isinstance(e, requests.exceptions.Timeout):
             raise HTTPException(
                 status_code=504,
-                detail=(
-                    "Request timed out after 180 seconds and 3 retry attempts. "
-                    "The Langflow API is taking too long to respond. This might be due to "
-                    "a complex query or high system load. Please try again with a simpler "
-                    "query or try later."
-                )
+                detail="Request timed out. Please try again."
             )
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Request to Langflow API failed: {str(e)}")
+        elif isinstance(e, requests.exceptions.HTTPError):
+            # Check if it's a context length error
+            try:
+                error_detail = e.response.json()
+                if isinstance(error_detail, dict) and 'detail' in error_detail:
+                    detail_str = str(error_detail['detail'])
+                    if 'maximum context length' in detail_str:
+                        raise HTTPException(
+                            status_code=413,
+                            detail="Unable to process query due to size limitations. Please contact support."
+                        )
+            except:
+                pass
             raise HTTPException(
-                status_code=502,
-                detail=f"Failed to communicate with Langflow API: {str(e)}"
+                status_code=e.response.status_code if hasattr(e.response, 'status_code') else 500,
+                detail=str(e)
             )
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Langflow API response: {str(e)}")
-            raise HTTPException(
-                status_code=502,
-                detail="Invalid response received from Langflow API"
-            )
-        except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}")
+        else:
             raise HTTPException(
                 status_code=500,
-                detail=f"An unexpected error occurred: {str(e)}"
+                detail=f"Error making API request: {str(e)}"
             )
-        
-        attempt += 1  # Increment attempt counter if we haven't returned or continued
+    except ValueError as e:
+        logger.error(f"Error parsing response: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error parsing response: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
 
 @app.get("/")
 def root():
