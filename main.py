@@ -58,12 +58,23 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     if not token.startswith("Bearer "):
         token = f"Bearer {token}"
     
+    # Log token format (safely)
+    logger.info(f"Token format check - starts with 'Bearer ': {token.startswith('Bearer ')}")
+    logger.info(f"Token length: {len(token)}")
+    
     headers = {
         "Authorization": token,
         "Content-Type": "application/json",
-        "Accept": "application/json"
+        "Accept": "application/json",
+        "User-Agent": "LangflowClient/1.0"  # Adding a user agent
     }
     
+    # Log headers (excluding full token)
+    safe_headers = headers.copy()
+    if 'Authorization' in safe_headers:
+        safe_headers['Authorization'] = safe_headers['Authorization'][:15] + '...'
+    logger.info(f"Request headers: {json.dumps(safe_headers, indent=2)}")
+
     payload = {
         "input_value": message,
         "output_type": "chat",
@@ -79,7 +90,6 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         try:
             logger.info(f"Starting API call to Langflow (attempt {attempt + 1}/{max_retries + 1}) at: {api_url}")
             logger.info(f"With payload: {json.dumps(payload, indent=2)}")
-            logger.info(f"Authorization header starts with: {headers['Authorization'][:15]}...")
             
             start_time = time.time()
             response = requests.post(api_url, json=payload, headers=headers, timeout=180)
@@ -94,6 +104,13 @@ def call_langflow_api(message: str, application_token: str) -> dict:
                 logger.info(f"Response text: {response_text[:1000]}")  # Log first 1000 chars
             except Exception as e:
                 logger.error(f"Could not read response text: {str(e)}")
+            
+            if response.status_code == 403:
+                logger.error("Authentication error with Langflow API")
+                raise HTTPException(
+                    status_code=403,
+                    detail="Authentication failed with Langflow API. Please verify your API token is valid and has not expired."
+                )
             
             if response.status_code == 504:
                 if attempt < max_retries:
