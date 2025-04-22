@@ -76,9 +76,9 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         "Authorization": token
     }
 
-    # Payload matching the exact format from the Langflow playground
+    # Payload matching the exact format from Postman
     payload = {
-        "partreferencenumber": part_number
+        "message": f"Can you give me the name of part PA-{part_number}"
     }
 
     logger.info(f"Making request with payload: {json.dumps(payload, indent=2)}")
