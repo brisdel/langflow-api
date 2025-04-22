@@ -74,12 +74,16 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         "Authorization": token
     }
 
-    # Payload matching the exact format from the cURL example
+    # Payload matching the exact format from the Langflow playground
     payload = {
         "input_value": f"Can you give me the name of part {part_number}?",
         "output_type": "chat",
         "input_type": "chat",
-        "tweaks": {}  # Remove tweaks for now to test basic functionality
+        "tweaks": {
+            "AstraDBToolComponent-OkQEv": {
+                "query": f"Can you give me the name of part {part_number}?"
+            }
+        }
     }
 
     logger.info(f"Making request with payload: {json.dumps(payload, indent=2)}")
