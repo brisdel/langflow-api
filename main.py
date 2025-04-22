@@ -64,16 +64,14 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     
     logger.info(f"Making request to URL: {url}")
 
-    # Clean up the token and ensure proper format
+    # Clean up the token
     token = application_token.strip()
-    if not token.startswith("Bearer "):
-        token = f"Bearer {token}"
 
-    # Headers with updated format
+    # Headers using x-api-key
     headers = {
         "Content-Type": "application/json",
         "accept": "application/json",
-        "Authorization": token
+        "x-api-key": token  # Use x-api-key header without 'Bearer '
     }
 
     # Payload matching the exact format from Postman
