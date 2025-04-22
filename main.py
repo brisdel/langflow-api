@@ -64,19 +64,24 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     
     logger.info(f"Making request to URL: {url}")
 
-    # Clean up the token
+    # Clean up the token and ensure proper format
     token = application_token.strip()
+    if not token.startswith("Bearer "):
+        token = f"Bearer {token}"
 
-    # Headers using x-api-key
+    # Headers matching the official Langflow snippet
     headers = {
         "Content-Type": "application/json",
-        "accept": "application/json",
-        "x-api-key": token  # Use x-api-key header without 'Bearer '
+        # "accept": "application/json", # Removed as not present in snippet
+        "Authorization": token
     }
 
-    # Payload matching the exact format from Postman
+    # Payload matching the official Langflow snippet format
     payload = {
-        "message": f"Can you give me the name of part PA-{part_number}"
+        "input_value": message, # Use the original message
+        "output_type": "chat",
+        "input_type": "chat"
+        # "tweaks": {} # Keeping tweaks empty for now
     }
 
     logger.info(f"Making request with payload: {json.dumps(payload, indent=2)}")
