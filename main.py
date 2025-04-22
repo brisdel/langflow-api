@@ -99,19 +99,54 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         
         response_data = response.json()
         logger.info(f"Received response: {json.dumps(response_data, indent=2)}")
-        
-        # Extract the actual text response if available
-        if isinstance(response_data, dict):
-            try:
-                # Navigate through the response structure to get the text
-                if (response_data.get("output") and 
-                    isinstance(response_data["output"], list) and 
-                    len(response_data["output"]) > 0):
-                    return {"status": "success", "data": response_data["output"][0]}
-            except:
-                pass
-        
-        return {"status": "success", "data": response_data}
+
+        # Updated logic to parse the correct nested structure
+        try:
+            logger.info("Attempting to parse Langflow response...")
+            final_output_list = response_data.get("outputs", [])
+            if not final_output_list or not isinstance(final_output_list, list):
+                logger.warning("'outputs' key missing or not a list in response.")
+                raise ValueError("Missing or invalid 'outputs' list")
+
+            logger.info(f"Found top-level 'outputs' list with {len(final_output_list)} item(s).")
+            first_output_item = final_output_list[0]
+            if not isinstance(first_output_item, dict):
+                logger.warning("First item in 'outputs' is not a dictionary.")
+                raise ValueError("Invalid first item in 'outputs' list")
+
+            nested_output_list = first_output_item.get("outputs", [])
+            if not nested_output_list or not isinstance(nested_output_list, list):
+                logger.warning("Nested 'outputs' key missing or not a list in first output item.")
+                raise ValueError("Missing or invalid nested 'outputs' list")
+
+            logger.info(f"Found nested 'outputs' list with {len(nested_output_list)} item(s).")
+            first_nested_output_item = nested_output_list[0]
+            if not isinstance(first_nested_output_item, dict):
+                logger.warning("First item in nested 'outputs' is not a dictionary.")
+                raise ValueError("Invalid first item in nested 'outputs' list")
+
+            results_dict = first_nested_output_item.get("results", {})
+            if not results_dict or not isinstance(results_dict, dict):
+                 logger.warning("'results' key missing or not a dict in nested output item.")
+                 raise ValueError("Missing or invalid 'results' dict")
+
+            message_dict = results_dict.get("message", {})
+            if not message_dict or not isinstance(message_dict, dict):
+                 logger.warning("'message' key missing or not a dict in results.")
+                 raise ValueError("Missing or invalid 'message' dict")
+
+            final_text = message_dict.get("text")
+            if final_text and isinstance(final_text, str):
+                logger.info(f"Successfully extracted text: {final_text}")
+                return {"status": "success", "data": {"response": final_text}}
+            else:
+                logger.warning("'text' key missing or not a string in message dict.")
+                raise ValueError("Missing or invalid 'text' value")
+
+        except Exception as e:
+            logger.error(f"Error parsing Langflow response: {e}. Returning raw data.", exc_info=True)
+            # Return raw data even if parsing fails
+            return {"status": "success", "data": response_data}
         
     except requests.exceptions.Timeout:
         logger.error("Request to Langflow API timed out")
