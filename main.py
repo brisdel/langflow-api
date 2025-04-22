@@ -79,13 +79,7 @@ def call_langflow_api(message: str, application_token: str) -> dict:
         "input_value": f"Can you give me the name of part {part_number}?",
         "output_type": "chat",
         "input_type": "chat",
-        "tweaks": {
-            "AstraDBToolComponent-OkQEv": {  # Using the component ID from your configuration
-                "model_name": "gpt-3.5-turbo-16k",
-                "temperature": 0.7,
-                "max_tokens": 100
-            }
-        }
+        "tweaks": {}  # Remove tweaks for now to test basic functionality
     }
 
     logger.info(f"Making request with payload: {json.dumps(payload, indent=2)}")
