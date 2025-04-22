@@ -28,7 +28,7 @@ app.add_middleware(
 
 # Constants for Langflow API
 BASE_API_URL = "https://api.langflow.astra.datastax.com"
-LANGFLOW_ID = "ed6c45f6-6029-47a5-a6ee-86d7caf24d60"
+LANGFLOW_ID = "dfd6fb5e-b2a8-4ea4-a71f-a71b9f8c95b1"
 FLOW_ID = "3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
 
 # Minimal tweaks structure focusing only on the database query
@@ -48,7 +48,7 @@ def extract_part_number(message: str) -> str:
 
 def call_langflow_api(message: str, application_token: str) -> dict:
     """
-    Call the Langflow API using the standard structure
+    Call the Langflow API using the playground-matched configuration
     """
     # Extract part number
     part_number = extract_part_number(message)
@@ -58,23 +58,23 @@ def call_langflow_api(message: str, application_token: str) -> dict:
             detail="Please provide a valid part number in the format PA-XXXXX"
         )
 
-    # Construct the URL exactly as in the example
-    url = f"https://api.langflow.astra.datastax.com/lf/ed6c45f6-6029-47a5-a6ee-86d7caf24d60/api/v1/run/3a762c3b-63a1-4815-9a7c-bdb9634b63fa"
+    # Construct the URL using the correct flow ID
+    url = f"{BASE_API_URL}/lf/{LANGFLOW_ID}/api/v1/run/{FLOW_ID}"
 
     # Clean up the token and ensure proper format
     token = application_token.strip()
     if not token.startswith("Bearer "):
         token = f"Bearer {token}"
 
-    # Headers exactly as in the example
+    # Headers
     headers = {
         "Content-Type": "application/json",
         "Authorization": token
     }
 
-    # Basic payload structure as in the example
+    # Simple payload matching playground behavior
     payload = {
-        "input_value": f"What is the name of part {part_number}?",
+        "input_value": f"Can you give me the name of part {part_number}?",  # Exact format from playground
         "output_type": "chat",
         "input_type": "chat"
     }
@@ -82,49 +82,43 @@ def call_langflow_api(message: str, application_token: str) -> dict:
     logger.info(f"Making request to Langflow API with payload: {json.dumps(payload, indent=2)}")
 
     try:
-        # Send API request exactly as in the example
-        response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()  # Raise exception for bad status codes
+        # Send request with a short timeout since playground responds in 1.2s
+        response = requests.post(url, json=payload, headers=headers, timeout=5)
+        response.raise_for_status()
         
         response_data = response.json()
         logger.info(f"Received response: {json.dumps(response_data, indent=2)}")
         
-        return {"status": "success", "data": response_data}
-        
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error making API request: {str(e)}")
-        if isinstance(e, requests.exceptions.Timeout):
-            raise HTTPException(
-                status_code=504,
-                detail="Request timed out. Please try again."
-            )
-        elif isinstance(e, requests.exceptions.HTTPError):
-            # Check if it's a context length error
+        # Extract the actual text response if available
+        if isinstance(response_data, dict):
             try:
-                error_detail = e.response.json()
-                if isinstance(error_detail, dict) and 'detail' in error_detail:
-                    detail_str = str(error_detail['detail'])
-                    if 'maximum context length' in detail_str:
-                        raise HTTPException(
-                            status_code=413,
-                            detail="Unable to process query due to size limitations. Please contact support."
-                        )
+                # Navigate through the response structure to get the text
+                if (response_data.get("output") and 
+                    isinstance(response_data["output"], list) and 
+                    len(response_data["output"]) > 0):
+                    return {"status": "success", "data": response_data["output"][0]}
             except:
                 pass
-            raise HTTPException(
-                status_code=e.response.status_code if hasattr(e.response, 'status_code') else 500,
-                detail=str(e)
-            )
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error making API request: {str(e)}"
-            )
-    except ValueError as e:
-        logger.error(f"Error parsing response: {str(e)}")
+        
+        return {"status": "success", "data": response_data}
+        
+    except requests.exceptions.Timeout:
+        logger.error("Request to Langflow API timed out after 5 seconds")
         raise HTTPException(
-            status_code=500,
-            detail=f"Error parsing response: {str(e)}"
+            status_code=504,
+            detail="Request timed out. The API should respond in ~1-2 seconds. Please try again."
+        )
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP error occurred: {str(e)}")
+        # Extract error message from response if possible
+        try:
+            error_detail = e.response.json()
+            error_message = error_detail.get('detail', str(e))
+        except:
+            error_message = str(e)
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Langflow API error: {error_message}"
         )
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
